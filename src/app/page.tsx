@@ -66,7 +66,8 @@ export default function Home() {
       if (name.toLowerCase().endsWith('.pdf')) {
         // Extraire le texte du PDF avec pdfjs-dist
         const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+        // Worker via CDN unpkg (plus stable que cdnjs pour pdfjs)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
         const pdf = await pdfjsLib.getDocument({ data: content }).promise
         const pages: string[] = []
         for (let i = 1; i <= pdf.numPages; i++) {
