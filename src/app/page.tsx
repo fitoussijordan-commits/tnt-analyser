@@ -60,17 +60,28 @@ export default function Home() {
   const [filter, setFilter]     = useState('')
 
   // ── Parse handlers ──────────────────────────────────────────────────────────
-  function handleTNT(content: string | ArrayBuffer, name: string) {
-    let text: string
-    if (content instanceof ArrayBuffer) {
-      text = new TextDecoder().decode(content)
-    } else {
-      text = content
-    }
-    const rows = parseTNT(text)
-    setTntRows(rows)
+  async function handleTNT(content: string | ArrayBuffer, name: string) {
     setTntName(name)
-    if (rows.length > 0) setStep(s => Math.max(s, 2) as 1 | 2 | 3)
+    if (content instanceof ArrayBuffer && name.toLowerCase().endsWith('.pdf')) {
+      // Parser le PDF via l'API serveur
+      const blob = new Blob([content], { type: 'application/pdf' })
+      const form = new FormData()
+      form.append('file', blob, name)
+      try {
+        const res = await fetch('/api/parse-pdf', { method: 'POST', body: form })
+        const data = await res.json()
+        if (data.error) { alert('Erreur parsing PDF: ' + data.error); return }
+        setTntRows(data.rows)
+        if (data.rows.length > 0) setStep(s => Math.max(s, 2) as 1 | 2 | 3)
+      } catch (e) {
+        alert('Erreur réseau: ' + e)
+      }
+    } else {
+      const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+      const rows = parseTNT(text)
+      setTntRows(rows)
+      if (rows.length > 0) setStep(s => Math.max(s, 2) as 1 | 2 | 3)
+    }
   }
 
   function handleOdoo(content: string | ArrayBuffer, name: string) {
@@ -198,11 +209,11 @@ export default function Home() {
                   <h2 className="text-sm font-semibold text-white/80">Facture TNT</h2>
                   {tntRows.length > 0 && <span className="text-xs text-emerald-400 font-medium">{tntRows.length} réf. extraites</span>}
                 </div>
-                <p className="text-xs text-white/30 mb-3">Glissez le fichier <span className="text-white/60 font-mono">_parsed.txt</span> généré par l'outil</p>
+                <p className="text-xs text-white/30 mb-3">Fichier PDF FedEx/TNT — parsé automatiquement</p>
                 <DropZone
                   label={tntName || 'Glissez votre fichier TNT'}
                   sublabel="TXT, CSV ou PDF parsé"
-                  accept={{ 'text/*': ['.txt', '.csv'] }}
+                  accept={{ 'application/pdf': ['.pdf'], 'text/*': ['.txt', '.csv'] }}
                   loaded={tntRows.length > 0}
                   onFile={handleTNT}
                   icon="📄"
