@@ -141,6 +141,37 @@ export function parseOdoo(text: string): OdooRow[] {
   return rows
 }
 
+// ─── Odoo Excel Parser ────────────────────────────────────────────────────────
+
+export async function parseOdooExcel(buffer: ArrayBuffer): Promise<OdooRow[]> {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.read(buffer, { type: 'array' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const raw: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+  if (!raw.length) return []
+
+  const headers = Object.keys(raw[0]).map(h => ({ original: h, lower: h.toLowerCase() }))
+  const find = (...keys: string[]) =>
+    headers.find(h => keys.some(k => h.lower.includes(k)))?.original ?? ''
+
+  const refCol    = find('commandes jointes', 'commande', 'référence', 'reference', 'order', 'name')
+  const clientCol = find('contact', 'client', 'partner', 'customer')
+  const amtCol    = find('montant ht cde', 'montant ht', 'montant', 'amount', 'total', 'ht')
+
+  const rows: OdooRow[] = []
+  for (const r of raw) {
+    const rawRef = String(r[refCol] ?? '')
+    const refM = rawRef.match(/S\d{5,}/)
+    if (!refM) continue
+    const clientRaw = String(r[clientCol] ?? rawRef)
+    const client = clientRaw.split(',')[0].trim()
+    const amtRaw = String(r[amtCol] ?? '0')
+    const commandeHT = parseFloat(amtRaw.replace(',', '.').replace(/[^\d.]/g, '')) || 0
+    rows.push({ ref: refM[0], rawRef, client, commandeHT })
+  }
+  return rows
+}
+
 // ─── Cross-join ───────────────────────────────────────────────────────────────
 
 export function crossData(tntRows: TNTRow[], odooRows: OdooRow[]): CrossedRow[] {
