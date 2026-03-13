@@ -17,7 +17,8 @@
     "react-dropzone": "^14.2.3",
     "papaparse": "^5.4.1",
     "clsx": "^2.1.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "pdfjs-dist": "^4.4.168"
   },
   "devDependencies": {
     "@types/node": "^20",

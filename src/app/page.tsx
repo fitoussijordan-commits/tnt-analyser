@@ -60,11 +60,54 @@ export default function Home() {
   const [filter, setFilter]     = useState('')
 
   // ── Parse handlers ──────────────────────────────────────────────────────────
-  function handleTNT(content: string | ArrayBuffer, name: string) {
-    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+  async function handleTNT(content: string | ArrayBuffer, name: string) {
+    let text: string
+    if (content instanceof ArrayBuffer) {
+      if (name.toLowerCase().endsWith('.pdf')) {
+        // Extraire le texte du PDF avec pdfjs-dist
+        const pdfjsLib = await import('pdfjs-dist')
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+        const pdf = await pdfjsLib.getDocument({ data: content }).promise
+        const pages: string[] = []
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i)
+          const tc = await page.getTextContent()
+          // Reconstituer les lignes en respectant les positions X/Y
+          const items = tc.items as Array<{ str: string; transform: number[]; width: number }>
+          // Trier par Y décroissant (haut -> bas), puis X croissant
+          const sorted = [...items].sort((a, b) => {
+            const dy = b.transform[5] - a.transform[5]
+            return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4]
+          })
+          // Regrouper par ligne (même Y ~)
+          let currentY = -1
+          let currentLine = ''
+          const pageLines: string[] = []
+          for (const item of sorted) {
+            const y = Math.round(item.transform[5])
+            if (currentY === -1) currentY = y
+            if (Math.abs(y - currentY) > 2) {
+              pageLines.push(currentLine)
+              currentLine = item.str
+              currentY = y
+            } else {
+              currentLine += ' ' + item.str
+            }
+          }
+          if (currentLine) pageLines.push(currentLine)
+          pages.push(pageLines.join('\n'))
+        }
+        text = pages.join('\n')
+      } else {
+        text = new TextDecoder().decode(content)
+      }
+    } else {
+      text = content
+    }
     const rows = parseTNT(text)
     setTntRows(rows)
     setTntName(name)
+    if (rows.length > 0) setStep(s => Math.max(s, 2) as 1 | 2 | 3)
   }
   function handleOdoo(content: string | ArrayBuffer, name: string) {
     if (content instanceof ArrayBuffer) {
@@ -195,7 +238,7 @@ export default function Home() {
                 <DropZone
                   label={tntName || 'Glissez votre fichier TNT'}
                   sublabel="TXT, CSV ou PDF parsé"
-                  accept={{ 'text/*': ['.txt', '.csv', '.pdf'] }}
+                  accept={{ 'application/pdf': ['.pdf'], 'text/*': ['.txt', '.csv'] }}
                   loaded={tntRows.length > 0}
                   onFile={handleTNT}
                   icon="📄"

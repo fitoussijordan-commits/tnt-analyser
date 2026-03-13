@@ -55,39 +55,41 @@ export const DEPT_NAMES: Record<string, string> = {
 // ─── TNT Parser ───────────────────────────────────────────────────────────────
 
 export function parseTNT(text: string): TNTRow[] {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l)
+  const lines = text.split('\n')
   const refMap: Record<string, TNTRow> = {}
 
   for (const line of lines) {
-    const dateM = line.match(/^(\d{2}\/\d{2})/)
-    if (!dateM) continue
+    // Cherche une ref Sxxxxx sur la ligne
+    const refMatch = line.match(/\b(S\d{5,})\b/)
+    if (!refMatch) continue
 
-    const refs = line.match(/S\d{5}/g)
-    if (!refs) continue
+    // Cherche le "Total en EUR" en fin de ligne : EXP  prixTransport  RS  0,00  TOTAL
+    const totalMatch = line.match(/EXP\s+[\d,]+\s+RS\s+[\d,]+\s+([\d,]+)\s*$/)
+    if (!totalMatch) continue
+
+    const ref = refMatch[1]
+    const total = parseFloat(totalMatch[1].replace(',', '.'))
 
     const deptM = line.match(/FR(\d{2})\s/)
     const dept = deptM ? deptM[1] : '??'
 
-    // Poids : dernier nombre xx,xx avant fin de ligne
-    const weightM = line.match(/([\d]{1,2}[,.][\d]{2})\s*E?\s*$/)
-    const weight = weightM ? parseFloat(weightM[1].replace(',', '.')) : 0
+    const dateM = line.match(/(\d{2}\/\d{2})/)
+    const date = dateM ? dateM[1] : ''
 
     // Destinataire : texte entre BONDY et FR\d{2}
-    const destM = line.match(/BONDY\s+([A-ZÉÀÜÎÔÙÛ][A-ZÉÀÜa-zéàüîôùû\s'&\-\.]+?)\s+FR\d{2}/)
+    const destM = line.match(/BONDY\s+(.+?)\s+FR\d{2}/)
     const dest = destM ? destM[1].trim() : ''
 
-    const date = dateM[1]
+    // Poids réel (juste avant EXP)
+    const weightM = line.match(/V?\s+([\d,]+)\s+EXP/)
+    const weight = weightM ? parseFloat(weightM[1].replace(',', '.')) : 0
 
-    for (const ref of refs) {
-      if (!refMap[ref]) {
-        refMap[ref] = { ref, dest, dept, weight: 0, transportHT: 0, date }
-      }
-      // Tarification simplifiée TNT France : ~7€ base + 0.4€/kg (approximation)
-      // On utilise le poids pour estimer; le montant réel sera dans la facture agrégée
-      refMap[ref].weight += weight
-      refMap[ref].transportHT += weight > 0 ? Math.round((6.5 + weight * 0.35) * 100) / 100 : 6.5
-      if (!refMap[ref].dest && dest) refMap[ref].dest = dest
+    if (!refMap[ref]) {
+      refMap[ref] = { ref, dest, dept, weight: 0, transportHT: 0, date }
     }
+    refMap[ref].weight = Math.round((refMap[ref].weight + weight) * 100) / 100
+    refMap[ref].transportHT = Math.round((refMap[ref].transportHT + total) * 100) / 100
+    if (!refMap[ref].dest && dest) refMap[ref].dest = dest
   }
 
   return Object.values(refMap).sort((a, b) => a.ref.localeCompare(b.ref))
