@@ -58,12 +58,28 @@ export function parseTNT(text: string): TNTRow[] {
   const lines = text.split('\n')
   const refMap: Record<string, TNTRow> = {}
 
+  // Format TSV pré-parsé : REF\tDEST\tDEPT\tWEIGHT\tTRANSPORT_HT\tDATE
+  if (lines[0]?.startsWith('REF\t')) {
+    for (const line of lines.slice(1)) {
+      const [ref, dest, dept, weight, total, date] = line.split('\t')
+      if (!ref || !ref.match(/^S\d{5}/)) continue
+      refMap[ref] = {
+        ref,
+        dest: dest || '',
+        dept: dept || '??',
+        weight: parseFloat(weight) || 0,
+        transportHT: parseFloat(total) || 0,
+        date: date || '',
+      }
+    }
+    return Object.values(refMap).sort((a, b) => a.ref.localeCompare(b.ref))
+  }
+
+  // Format texte brut reconstitué depuis PDF (lignes avec S\d{5} + EXP ... RS ... TOTAL)
   for (const line of lines) {
-    // Cherche une ref Sxxxxx sur la ligne
     const refMatch = line.match(/\b(S\d{5,})\b/)
     if (!refMatch) continue
 
-    // Cherche le "Total en EUR" en fin de ligne : EXP  prixTransport  RS  0,00  TOTAL
     const totalMatch = line.match(/EXP\s+[\d,]+\s+RS\s+[\d,]+\s+([\d,]+)\s*$/)
     if (!totalMatch) continue
 
@@ -76,11 +92,9 @@ export function parseTNT(text: string): TNTRow[] {
     const dateM = line.match(/(\d{2}\/\d{2})/)
     const date = dateM ? dateM[1] : ''
 
-    // Destinataire : texte entre BONDY et FR\d{2}
     const destM = line.match(/BONDY\s+(.+?)\s+FR\d{2}/)
     const dest = destM ? destM[1].trim() : ''
 
-    // Poids réel (juste avant EXP)
     const weightM = line.match(/V?\s+([\d,]+)\s+EXP/)
     const weight = weightM ? parseFloat(weightM[1].replace(',', '.')) : 0
 
@@ -94,40 +108,6 @@ export function parseTNT(text: string): TNTRow[] {
 
   return Object.values(refMap).sort((a, b) => a.ref.localeCompare(b.ref))
 }
-
-// ─── Odoo Excel Parser ────────────────────────────────────────────────────────
-
-export async function parseOdooExcel(buffer: ArrayBuffer): Promise<OdooRow[]> {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.read(buffer, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-  if (!raw.length) return []
-
-  // Détection automatique des colonnes
-  const headers = Object.keys(raw[0]).map(h => ({ original: h, lower: h.toLowerCase() }))
-  const find = (...keys: string[]) =>
-    headers.find(h => keys.some(k => h.lower.includes(k)))?.original ?? ''
-
-  const refCol    = find('commandes jointes', 'commande', 'référence', 'reference', 'order', 'name')
-  const clientCol = find('contact', 'client', 'partner', 'customer')
-  const amtCol    = find('montant ht cde', 'montant ht', 'montant', 'amount', 'total', 'ht')
-
-  const rows: OdooRow[] = []
-  for (const r of raw) {
-    const rawRef = String(r[refCol] ?? '')
-    const refM = rawRef.match(/S\d{5,}/)
-    if (!refM) continue
-    const clientRaw = String(r[clientCol] ?? rawRef)
-    const client = clientRaw.split(',')[0].trim()
-    const amtRaw = String(r[amtCol] ?? '0')
-    const commandeHT = parseFloat(amtRaw.replace(',', '.').replace(/[^\d.]/g, '')) || 0
-    rows.push({ ref: refM[0], rawRef, client, commandeHT })
-  }
-  return rows
-}
-
-// ─── Odoo CSV Parser ──────────────────────────────────────────────────────────
 
 export function parseOdoo(text: string): OdooRow[] {
   const lines = text.split('\n').filter(l => l.trim())

@@ -60,37 +60,10 @@ export default function Home() {
   const [filter, setFilter]     = useState('')
 
   // ── Parse handlers ──────────────────────────────────────────────────────────
-  async function handleTNT(content: string | ArrayBuffer, name: string) {
+  function handleTNT(content: string | ArrayBuffer, name: string) {
     let text: string
     if (content instanceof ArrayBuffer) {
-      if (name.toLowerCase().endsWith('.pdf')) {
-        // Extraire le texte du PDF avec pdfjs-dist
-        const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-        const pdf = await pdfjsLib.getDocument({ data: content }).promise
-        const allLines: string[] = []
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i)
-          const tc = await page.getTextContent()
-          const items = tc.items as Array<{ str: string; transform: number[] }>
-          // Grouper par Y arrondi à l'entier, trier par X
-          const byY: Record<number, Array<[number, string]>> = {}
-          for (const item of items) {
-            const y = Math.round(item.transform[5])
-            if (!byY[y]) byY[y] = []
-            byY[y].push([item.transform[4], item.str])
-          }
-          // Reconstituer les lignes triées Y décroissant (haut=grand Y en PDF)
-          const ys = Object.keys(byY).map(Number).sort((a, b) => b - a)
-          for (const y of ys) {
-            const sorted = byY[y].sort((a, b) => a[0] - b[0])
-            allLines.push(sorted.map(([, s]) => s).join(' '))
-          }
-        }
-        text = allLines.join('\n')
-      } else {
-        text = new TextDecoder().decode(content)
-      }
+      text = new TextDecoder().decode(content)
     } else {
       text = content
     }
@@ -99,6 +72,7 @@ export default function Home() {
     setTntName(name)
     if (rows.length > 0) setStep(s => Math.max(s, 2) as 1 | 2 | 3)
   }
+
   function handleOdoo(content: string | ArrayBuffer, name: string) {
     if (content instanceof ArrayBuffer) {
       parseOdooExcel(content).then(rows => {
@@ -224,11 +198,11 @@ export default function Home() {
                   <h2 className="text-sm font-semibold text-white/80">Facture TNT</h2>
                   {tntRows.length > 0 && <span className="text-xs text-emerald-400 font-medium">{tntRows.length} réf. extraites</span>}
                 </div>
-                <p className="text-xs text-white/30 mb-3">Fichier texte exporté depuis votre PDF TNT/FedEx</p>
+                <p className="text-xs text-white/30 mb-3">Glissez le fichier <span className="text-white/60 font-mono">_parsed.txt</span> généré par l'outil</p>
                 <DropZone
                   label={tntName || 'Glissez votre fichier TNT'}
                   sublabel="TXT, CSV ou PDF parsé"
-                  accept={{ 'application/pdf': ['.pdf'], 'text/*': ['.txt', '.csv'] }}
+                  accept={{ 'text/*': ['.txt', '.csv'] }}
                   loaded={tntRows.length > 0}
                   onFile={handleTNT}
                   icon="📄"
