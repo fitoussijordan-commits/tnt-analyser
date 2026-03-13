@@ -6,7 +6,7 @@ import DropZone from '@/components/DropZone'
 import MetricCard from '@/components/MetricCard'
 import PctBadge from '@/components/PctBadge'
 import {
-  parseTNT, parseOdoo, crossData, computeStats,
+  parseTNT, parseOdoo, parseOdooExcel, crossData, computeStats,
   DEMO_TNT, DEMO_ODOO, DEPT_NAMES,
   type TNTRow, type OdooRow, type CrossedRow,
 } from '@/lib/parsers'
@@ -65,10 +65,19 @@ export default function Home() {
     setTntRows(rows)
     setTntName(name)
   }
-  function handleOdoo(text: string, name: string) {
-    const rows = parseOdoo(text)
-    setOdooRows(rows)
-    setOdooName(name)
+  function handleOdoo(content: string | ArrayBuffer, name: string) {
+    if (content instanceof ArrayBuffer) {
+      parseOdooExcel(content).then(rows => {
+        setOdooRows(rows)
+        setOdooName(name)
+        if (rows.length > 0) setStep(s => Math.max(s, 3))
+      })
+    } else {
+      const rows = parseOdoo(content)
+      setOdooRows(rows)
+      setOdooName(name)
+      if (rows.length > 0) setStep(s => Math.max(s, 3))
+    }
   }
   function loadDemo() {
     handleTNT(DEMO_TNT, 'démo-tnt.txt')
@@ -207,7 +216,7 @@ export default function Home() {
                 <DropZone
                   label={odooName || 'Glissez votre export Odoo'}
                   sublabel="CSV séparé par virgule ou point-virgule"
-                  accept={{ 'text/*': ['.csv', '.txt', '.xlsx'] }}
+                  accept={{ 'text/*': ['.csv', '.txt'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }}
                   loaded={odooRows.length > 0}
                   onFile={handleOdoo}
                   icon="📊"

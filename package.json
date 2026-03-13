@@ -16,7 +16,8 @@
     "react-chartjs-2": "^5.2.0",
     "react-dropzone": "^14.2.3",
     "papaparse": "^5.4.1",
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",

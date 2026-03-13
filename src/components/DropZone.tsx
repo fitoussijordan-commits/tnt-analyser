@@ -8,7 +8,7 @@ interface Props {
   sublabel: string
   accept: Record<string, string[]>
   loaded: boolean
-  onFile: (text: string, name: string) => void
+  onFile: (content: string | ArrayBuffer, name: string) => void
   icon: React.ReactNode
 }
 
@@ -18,9 +18,15 @@ export default function DropZone({ label, sublabel, accept, loaded, onFile, icon
   const onDrop = useCallback((files: File[]) => {
     setIsDragging(false)
     if (!files[0]) return
+    const file = files[0]
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
     const reader = new FileReader()
-    reader.onload = e => onFile(e.target?.result as string, files[0].name)
-    reader.readAsText(files[0])
+    reader.onload = e => {
+      const result = e.target?.result
+      if (result !== undefined && result !== null) onFile(result, file.name)
+    }
+    if (isExcel) reader.readAsArrayBuffer(file)
+    else reader.readAsText(file)
   }, [onFile])
 
   const { getRootProps, getInputProps } = useDropzone({
