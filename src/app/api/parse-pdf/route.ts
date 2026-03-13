@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import PDFParser from 'pdf2json'
 
-interface TextItem {
-  str: string
-  transform: number[]
+interface TextRun {
+  x: number
+  y: number
+  R: Array<{ T: string }>
 }
 
 function parseFedexLines(lines: string[]) {
@@ -42,36 +44,40 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
-    const buffer = new Uint8Array(await file.arrayBuffer())
+    const buffer = Buffer.from(await file.arrayBuffer())
 
-    // pdfjs-dist côté serveur Node (pas de worker nécessaire)
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js')
-    const pdf = await pdfjs.getDocument({ data: buffer, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true }).promise
+    const rows = await new Promise<ReturnType<typeof parseFedexLines>>((resolve, reject) => {
+      const parser = new PDFParser()
 
-    const allLines: string[] = []
+      parser.on('pdfParser_dataError', (err: { parserError: string }) => reject(err.parserError))
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i)
-      const tc = await page.getTextContent()
-      const items = tc.items as TextItem[]
+      parser.on('pdfParser_dataReady', (data: { Pages: Array<{ Texts: TextRun[] }> }) => {
+        const allLines: string[] = []
 
-      // Grouper par Y arrondi
-      const byY: Record<number, Array<[number, string]>> = {}
-      for (const item of items) {
-        const y = Math.round(item.transform[5])
-        if (!byY[y]) byY[y] = []
-        byY[y].push([item.transform[4], item.str])
-      }
+        for (const page of data.Pages) {
+          // Grouper par Y arrondi (pdf2json utilise des unités 0.0xxx)
+          const byY: Record<number, Array<[number, string]>> = {}
 
-      // Reconstituer les lignes
-      const ys = Object.keys(byY).map(Number).sort((a, b) => b - a)
-      for (const y of ys) {
-        const sorted = byY[y].sort((a, b) => a[0] - b[0])
-        allLines.push(sorted.map(([, s]) => s).join(' '))
-      }
-    }
+          for (const text of page.Texts) {
+            const y = Math.round(text.y * 100) // arrondir à 2 décimales * 100
+            const str = text.R.map(r => decodeURIComponent(r.T)).join('')
+            if (!byY[y]) byY[y] = []
+            byY[y].push([text.x, str])
+          }
 
-    const rows = parseFedexLines(allLines)
+          const ys = Object.keys(byY).map(Number).sort((a, b) => a - b) // Y croissant = haut en bas
+          for (const y of ys) {
+            const sorted = byY[y].sort((a, b) => a[0] - b[0])
+            allLines.push(sorted.map(([, s]) => s).join(' '))
+          }
+        }
+
+        resolve(parseFedexLines(allLines))
+      })
+
+      parser.parseBuffer(buffer)
+    })
+
     return NextResponse.json({ rows, total: rows.length })
 
   } catch (err) {
