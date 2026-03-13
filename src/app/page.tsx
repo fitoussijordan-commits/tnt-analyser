@@ -66,39 +66,28 @@ export default function Home() {
       if (name.toLowerCase().endsWith('.pdf')) {
         // Extraire le texte du PDF avec pdfjs-dist
         const pdfjsLib = await import('pdfjs-dist')
-        // Worker via CDN unpkg (plus stable que cdnjs pour pdfjs)
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
         const pdf = await pdfjsLib.getDocument({ data: content }).promise
-        const pages: string[] = []
+        const allLines: string[] = []
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i)
           const tc = await page.getTextContent()
-          // Reconstituer les lignes en respectant les positions X/Y
-          const items = tc.items as Array<{ str: string; transform: number[]; width: number }>
-          // Trier par Y décroissant (haut -> bas), puis X croissant
-          const sorted = [...items].sort((a, b) => {
-            const dy = b.transform[5] - a.transform[5]
-            return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4]
-          })
-          // Regrouper par ligne (même Y ~)
-          let currentY = -1
-          let currentLine = ''
-          const pageLines: string[] = []
-          for (const item of sorted) {
+          const items = tc.items as Array<{ str: string; transform: number[] }>
+          // Grouper par Y arrondi à l'entier, trier par X
+          const byY: Record<number, Array<[number, string]>> = {}
+          for (const item of items) {
             const y = Math.round(item.transform[5])
-            if (currentY === -1) currentY = y
-            if (Math.abs(y - currentY) > 2) {
-              pageLines.push(currentLine)
-              currentLine = item.str
-              currentY = y
-            } else {
-              currentLine += ' ' + item.str
-            }
+            if (!byY[y]) byY[y] = []
+            byY[y].push([item.transform[4], item.str])
           }
-          if (currentLine) pageLines.push(currentLine)
-          pages.push(pageLines.join('\n'))
+          // Reconstituer les lignes triées Y décroissant (haut=grand Y en PDF)
+          const ys = Object.keys(byY).map(Number).sort((a, b) => b - a)
+          for (const y of ys) {
+            const sorted = byY[y].sort((a, b) => a[0] - b[0])
+            allLines.push(sorted.map(([, s]) => s).join(' '))
+          }
         }
-        text = pages.join('\n')
+        text = allLines.join('\n')
       } else {
         text = new TextDecoder().decode(content)
       }
