@@ -60,7 +60,8 @@ export default function Home() {
   const [filter, setFilter]     = useState('')
 
   // ── Parse handlers ──────────────────────────────────────────────────────────
-  function handleTNT(text: string, name: string) {
+  function handleTNT(content: string | ArrayBuffer, name: string) {
+    const text = content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
     const rows = parseTNT(text)
     setTntRows(rows)
     setTntName(name)
