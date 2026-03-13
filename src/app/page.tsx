@@ -70,13 +70,13 @@ export default function Home() {
       parseOdooExcel(content).then(rows => {
         setOdooRows(rows)
         setOdooName(name)
-        if (rows.length > 0) setStep(s => Math.max(s, 3))
+        if (rows.length > 0) setStep(s => Math.max(s, 3) as 1 | 2 | 3)
       })
     } else {
       const rows = parseOdoo(content)
       setOdooRows(rows)
       setOdooName(name)
-      if (rows.length > 0) setStep(s => Math.max(s, 3))
+      if (rows.length > 0) setStep(s => Math.max(s, 3) as 1 | 2 | 3)
     }
   }
   function loadDemo() {
